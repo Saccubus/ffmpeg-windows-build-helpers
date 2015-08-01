@@ -1389,7 +1389,7 @@ build_libdecklink() {
 build_ffmpeg() {
   local shared_or_static=$1
   local extra_postpend_configure_options=$2
-  local git_url="https://github.com/FFmpeg/FFmpeg.git"
+  local git_url="https://github.com/Saccubus/ffmpeg.git"
   local output_dir=$3
   if [[ -z $output_dir ]]; then
     output_dir="ffmpeg_git"
@@ -1414,6 +1414,7 @@ build_ffmpeg() {
 
   do_git_checkout $git_url ${output_dir}
   cd $output_dir
+  git checkout -b ${REPO} origin/${REPO}
   
   if [ "$bits_target" = "32" ]; then
    local arch=x86
