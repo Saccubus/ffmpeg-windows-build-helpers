@@ -1400,7 +1400,7 @@ build_libdecklink() {
 build_ffmpeg() {
   local shared_or_static=$1
   local extra_postpend_configure_options=$2
-  local git_url="https://github.com/FFmpeg/FFmpeg.git"
+  local git_url="https://github.com/Saccubus/FFmpeg.git"
   local output_dir=$3
   if [[ -z $output_dir ]]; then
     output_dir="ffmpeg_git"
