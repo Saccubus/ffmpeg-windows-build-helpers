@@ -56,7 +56,7 @@ check_missing_packages () {
     echo "for ubuntu: $ sudo apt-get install subversion curl texinfo g++ bison flex cvs yasm automake libtool autoconf gcc cmake git make pkg-config zlib1g-dev mercurial unzip pax -y" 
     echo "for gentoo (a non ubuntu distro): same as above, but no g++, no gcc, git is dev-vcs/git, zlib1g-dev is zlib, pkg-config is dev-util/pkgconfig, add ed..."
     echo "for OS X (homebrew): brew install wget cvs hg yasm automake autoconf cmake hg libtool xz pkg-config"
-    echo "for debian: same as ubuntu, but add  libtool-bin"
+    echo "for debian: same as ubuntu, but add libtool-bin and ed"
     exit 1
   fi
 
@@ -570,9 +570,10 @@ build_libx264() {
   if [[ $build_x264_with_libav == y ]]; then
     build_ffmpeg static --disable-libx264 ffmpeg_git_pre_x264 # installs libav locally so we can use it within x264.exe FWIW...
     checkout_dir="${checkout_dir}_with_libav"
-    # they don't know how to use a normal pkg-config when cross compiling, so specify some manually:
+    # they don't know how to use a normal pkg-config when cross compiling, so specify some manually: (see their mailing list for a request...)
     export LAVF_LIBS="$LAVF_LIBS $(pkg-config --libs libavformat libavcodec libavutil libswscale)"
     export LAVF_CFLAGS="$LAVF_CFLAGS $(pkg-config --cflags libavformat libavcodec libavutil libswscale)"
+    export SWSCALE_LIBS="$SWSCALE_LIBS $(pkg-config --libs libswscale)"
   fi
 
   local x264_profile_guided=n # or y -- haven't gotten this proven yet...TODO
@@ -615,6 +616,7 @@ build_libx264() {
 
   unset LAVF_LIBS
   unset LAVF_CFLAGS
+  unset SWSCALE_LIBS 
   cd ..
 }
 
@@ -688,8 +690,8 @@ build_libsndfile() {
 }
 
 build_libbs2b() {
-  export ac_cv_func_malloc_0_nonnull=yes # rp_alloc failure yikes
-  generic_download_and_install http://downloads.sourceforge.net/project/bs2b/libbs2b/3.1.0/libbs2b-3.1.0.tar.lzma
+  export ac_cv_func_malloc_0_nonnull=yes # rp_alloc compile failure yikes
+  generic_download_and_install http://downloads.sourceforge.net/project/bs2b/libbs2b/3.1.0/libbs2b-3.1.0.tar.gz
   unset ac_cv_func_malloc_0_nonnull
 }
 
@@ -747,13 +749,22 @@ build_libvpx() {
 }
 
 build_libutvideo() {
-  # if ending in .zip from sourceforge needs to not have /download on it? huh wuh?
-  download_and_unpack_file http://sourceforge.net/projects/ffmpegwindowsbi/files/utvideo-12.2.1-src.zip utvideo-12.2.1 # local copy since the originating site http://umezawa.dyndns.info/archive/utvideo is sometimes inaccessible from draconian proxies
-  #do_git_checkout https://github.com/qyot27/libutvideo.git libutvideo_git_qyot27 # todo this would be even newer version than 12.2.1?
-  cd utvideo-12.2.1
+  do_git_checkout https://github.com/umezawatakeshi/utvideo utvideo_git
+  cd utvideo_git
+    if [ -d "../../cross_compilers/mingw-w64-i686" ]; then
+    cp ./include/myinttypes.h ../../cross_compilers/mingw-w64-i686/include/myinttypes.h
+    fi
+    if [ -d "../../cross_compilers/mingw-w64-x86_64" ]; then
+    cp ./include/myinttypes.h ../../cross_compilers/mingw-w64-x86_64/include/myinttypes.h
+    fi    
     apply_patch https://raw.githubusercontent.com/rdp/ffmpeg-windows-build-helpers/master/patches/utv.diff
-    sed -i.bak "s|Format.o|DummyCodec.o|" GNUmakefile
-    do_make_and_make_install "CROSS_PREFIX=$cross_prefix DESTDIR=$mingw_w64_x86_64_prefix prefix=" # prefix= to avoid it adding an extra /usr/local to it yikes
+    if [[ ! -f GNUmakefile ]]; then
+      curl -4 https://raw.githubusercontent.com/rdp/utvideo/master/utvideo-makefile -o GNUmakefile -L || exit 1
+    fi
+    #sed -i.bak "s|Format.o|DummyCodec.o|" GNUmakefile
+    export CXXFLAGS='-g -O2 -Wall -Wextra -Wno-multichar -Wno-unused-parameter -Wno-sign-compare -Iinclude -Iutv_logl' # not sure why I needed those extra includes...
+    do_make_and_make_install "CROSS_PREFIX=$cross_prefix DESTDIR=$mingw_w64_x86_64_prefix prefix=" # prefix= required for some odd reason
+    unset CXXFLAGS
   cd ..
 }
 
@@ -1061,9 +1072,9 @@ build_libnvenc() {
   fi
 }
 
-build_intel_quicksync_mfx() { # qsv
-  do_git_checkout https://github.com/mjb2000/mfx_dispatch.git mfx_dispatch_git
-  cd mfx_dispatch_git
+build_intel_quicksync_mfx() { # i.e. qsv
+  do_git_checkout https://github.com/lu-zero/mfx_dispatch.git mfx_dispatch_git_lu_zero
+  cd mfx_dispatch_git_lu_zero
     if [[ ! -f "configure" ]]; then
       autoreconf -fiv || exit 1
     fi
@@ -1263,9 +1274,6 @@ build_vlc() {
   # call out dependencies here since it's a lot, plus hierarchical FTW!
   # should be ffmpeg 1.1.1 or some odd?
 
-  echo "not doing vlc build, currently broken until enough interest to fix it"
-  return
-
   # vlc dependencies:
   # if [ ! -f $mingw_w64_x86_64_prefix/lib/libavutil.a ]; then # it takes awhile without this 
     build_ffmpeg
@@ -1274,6 +1282,9 @@ build_vlc() {
   build_libdvdnav
   build_libx265
   build_qt
+
+  # currently broken :|
+  return
 
   do_git_checkout https://github.com/videolan/vlc.git vlc_git
   cd vlc_git
@@ -1300,7 +1311,7 @@ build_vlc() {
   echo "
 
 
-     created a file like ${PWD}/vlc-2.2.0-git/vlc.exe
+     vlc success, created a file like ${PWD}/vlc-xxx-git/vlc.exe
 
 
 
@@ -1315,7 +1326,7 @@ build_mplayer() {
   build_libdvdnav
   download_and_unpack_file http://sourceforge.net/projects/mplayer-edl/files/mplayer-export-snapshot.2014-05-19.tar.bz2 mplayer-export-2014-05-19
   cd mplayer-export-2014-05-19
-  do_git_checkout https://github.com/FFmpeg/FFmpeg ffmpeg d43c303038e9bd
+  do_git_checkout https://github.com/FFmpeg/FFmpeg ffmpeg d43c303038e9bd # known to work
   export LDFLAGS='-lpthread -ldvdnav -ldvdread -ldvdcss' # not compat with newer dvdread possibly? huh wuh?
   export CFLAGS=-DHAVE_DVDCSS_DVDCSS_H
   do_configure "--enable-cross-compile --host-cc=cc --cc=${cross_prefix}gcc --windres=${cross_prefix}windres --ranlib=${cross_prefix}ranlib --ar=${cross_prefix}ar --as=${cross_prefix}as --nm=${cross_prefix}nm --enable-runtime-cpudetection --extra-cflags=$CFLAGS --with-dvdnav-config=$mingw_w64_x86_64_prefix/bin/dvdnav-config --disable-dvdread-internal --disable-libdvdcss-internal --disable-w32threads --enable-pthreads --extra-libs=-lpthread --enable-debug --enable-ass-internal --enable-dvdread --enable-dvdnav" # haven't reported the ldvdcss thing, think it's to do with possibly it not using dvdread.pc [?] XXX check with trunk
@@ -1413,7 +1424,7 @@ build_ffmpeg() {
   fi
 
   rm -rf ${output_dir}
-  do_git_checkout $git_url ${output_dir}
+  do_git_checkout $git_url $output_dir $ffmpeg_git_checkout_version 
   cd $output_dir
   git checkout ${REPO}
   
@@ -1424,12 +1435,15 @@ build_ffmpeg() {
   fi
 
   init_options="--arch=$arch --target-os=mingw32 --cross-prefix=$cross_prefix --pkg-config=pkg-config --disable-w32threads"
-  config_options="$init_options --enable-gpl --enable-libsoxr --enable-fontconfig --enable-libass --enable-libutvideo --enable-libbluray --enable-iconv --enable-libtwolame --extra-cflags=-DLIBTWOLAME_STATIC --enable-libzvbi --enable-libcaca --enable-libmodplug --extra-libs=-lstdc++ --extra-libs=-lpng --enable-libvidstab --enable-libx265 --enable-decklink --extra-libs=-loleaut32 --enable-libx264 --enable-libxvid --enable-libmp3lame --enable-version3 --enable-zlib --enable-librtmp --enable-libvorbis --enable-libtheora --enable-libspeex --enable-libopenjpeg --enable-gnutls --enable-libgsm --enable-libfreetype --enable-libopus --enable-frei0r --enable-filter=frei0r --enable-bzlib --enable-libxavs --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libvo-amrwbenc --enable-libschroedinger --enable-libvpx --enable-libilbc --enable-libwavpack --enable-libwebp --enable-libgme --enable-dxva2 --enable-avisynth --enable-gray --enable-libopenh264" 
+  config_options="$init_options --enable-gpl --enable-libsoxr --enable-fontconfig --enable-libass --enable-libbluray --enable-iconv --enable-libtwolame --extra-cflags=-DLIBTWOLAME_STATIC --enable-libzvbi --enable-libcaca --enable-libmodplug --extra-libs=-lstdc++ --extra-libs=-lpng --enable-libvidstab --enable-libx265 --enable-decklink --extra-libs=-loleaut32 --enable-libx264 --enable-libxvid --enable-libmp3lame --enable-version3 --enable-zlib --enable-librtmp --enable-libvorbis --enable-libtheora --enable-libspeex --enable-libopenjpeg --enable-gnutls --enable-libgsm --enable-libfreetype --enable-libopus --enable-frei0r --enable-filter=frei0r --enable-bzlib --enable-libxavs --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libvo-amrwbenc --enable-libschroedinger --enable-libvpx --enable-libilbc --enable-libwavpack --enable-libwebp --enable-libgme --enable-dxva2 --enable-avisynth --enable-gray --enable-libopenh264 --enable-nvenc" 
   # other possibilities (you'd need to also uncomment the call to their build method): 
   #   --enable-w32threads # [worse UDP than pthreads, so not using that] 
   #   --enable-libflite # [too big so not enabled]
   if [[ $build_intel_qsv = y ]]; then
     config_options="$config_options --enable-libmfx" # [note, not windows xp friendly]
+  fi
+  if [[ $build_libutv = y ]]; then
+    config_options="$config_options --enable-libutvideo"
   fi
   config_options="$config_options --extra-libs=-lpsapi" # dlfcn [frei0r?] requires this, has no .pc file should put in frei0r.pc? ...
   config_options="$config_options --extra-cflags=$CFLAGS" # --extra-cflags is not needed here, but adds it to the console output which I like for debugging purposes
@@ -1437,7 +1451,7 @@ build_ffmpeg() {
   config_options="$config_options $postpend_configure_opts"
 
   if [[ "$non_free" = "y" ]]; then
-    config_options="$config_options --enable-nonfree --enable-libfdk-aac --disable-libfaac --enable-nvenc " 
+    config_options="$config_options --enable-nonfree --enable-libfdk-aac --disable-libfaac " 
     # libfaac deemed too poor quality and becomes the default if included -- add it in and uncomment the build_faac line to include it, if anybody ever wants it... 
     # To use fdk-aac in VLC, we need to change FFMPEG's default (aac), but I haven't found how to do that... So I disabled it. This could be an new option for the script? (was --disable-decoder=aac )
     # other possible options: --enable-openssl [unneeded since we use gnutls] --enable-libaacplus [just use fdk-aac only to avoid collision]
@@ -1506,8 +1520,10 @@ build_dependencies() {
   build_wavpack
   build_libgme_game_music_emu
   build_libwebp
-  build_libutvideo
-  #build_libflite # too big for distro...though may still be useful
+  if [[ $build_libutv = y ]]; then
+    build_libutvideo
+  fi
+  #build_libflite # too big for distro...uncomment if you want it though :)
   build_libgsm
   build_sdl # needed for ffplay to be created
   build_libopus
@@ -1546,14 +1562,14 @@ build_dependencies() {
   build_libfribidi
   build_libass # needs freetype, needs fribidi, needs fontconfig
   build_libopenjpeg
+  build_libnvenc
   if [[ $build_intel_qsv = y ]]; then
     build_intel_quicksync_mfx
   fi
   if [[ "$non_free" = "y" ]]; then
     build_fdk_aac
     # build_faac # not included for now, too poor quality output :)
-    # build_libaacplus # if you use it, conflicts with other AAC encoders <sigh>, so disabled :)
-    build_libnvenc
+    # build_libaacplus # if you use it, conflicts with other AAC encoders <sigh>, so disabled :)    
   fi
   # build_openssl # hopefully do not need it anymore, since we use gnutls everywhere, so just don't even build it anymore...
   build_librtmp # needs gnutls [or openssl...]
@@ -1620,20 +1636,23 @@ build_mplayer=n
 build_vlc=n
 git_get_latest=y
 prefer_stable=y
-build_intel_qsv=n
+build_intel_qsv=y
+build_libutv=n
 #disable_nonfree=n # have no value by default to force user selection
 original_cflags= # no export needed, this is just a local copy
 build_x264_with_libav=n
+ffmpeg_git_checkout_version=
 
 # parse command line parameters, if any
 while true; do
   case $1 in
     -h | --help ) echo "available options [with default value]: 
-      --build-ffmpeg-shared=n 
-      --build-ffmpeg-static=y 
+      --build-ffmpeg-static=y  (the "normal" ffmpeg.exe build, on by default)
+      --build-ffmpeg-shared=n  (ffmpeg with .dll files as well as .exe files)
+      --ffmpeg-git-checkout-version=[master] if you want to build a particular version of FFmpeg, ex: release/2.8 or a git hash
       --gcc-cpu-count=1x [number of cpu cores set it higher than 1 if you have multiple cores and > 1GB RAM, this speeds up initial cross compiler build. FFmpeg build uses number of cores no matter what] 
       --disable-nonfree=y (set to n to include nonfree like libfdk-aac) 
-      --build-intel-qsv=n (set to y to include the [non windows xp compat.] qsv library and ffmpeg module
+      --build-intel-qsv=y (set to y to include the [non windows xp compat.] qsv library and ffmpeg module. NB this not not hevc_qsv...
       --sandbox-ok=n [skip sandbox prompt if y] 
       -d [meaning \"defaults\" skip all prompts, just build ffmpeg static with some reasonable defaults like no git updates] 
       --build-libmxf=n [builds libMXF, libMXF++, writeavidmxfi.exe and writeaviddv50.exe from the BBC-Ingex project] 
@@ -1645,13 +1664,13 @@ while true; do
       --compiler-flavors=[multi,win32,win64] [default prompt, or skip if you already have one built, multi is both win32 and win64]
       --cflags= [default is empty, compiles for generic cpu, see README]
       --git-get-latest=y [do a git pull for latest code from repositories like FFmpeg--can force a rebuild if changes are detected]
-      --build-intel-qsv=n include intel QSV library [not windows xp friendly]
       --build-x264-with-libav=n build x264.exe with bundled/included "libav" ffmpeg libraries within it
       --prefer-stable=y build a few libraries from releases instead of git master
       --high-bitdepth=y Enable high bit depth for x264 (10 bits) and x265 (10 and 12 bits, x64 build. Not officially supported on x86 (win32), but enabled by disabling its assembly).
        "; exit 0 ;;
     --sandbox-ok=* ) sandbox_ok="${1#*=}"; shift ;;
     --gcc-cpu-count=* ) gcc_cpu_count="${1#*=}"; shift ;;
+    --ffmpeg-git-checkout-version=* ) ffmpeg_git_checkout_version="${1#*=}"; shift ;;
     --build-libmxf=* ) build_libmxf="${1#*=}"; shift ;;
     --build-mp4box=* ) build_mp4box="${1#*=}"; shift ;;
     --git-get-latest=* ) git_get_latest="${1#*=}"; shift ;;
