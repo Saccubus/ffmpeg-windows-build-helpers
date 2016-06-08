@@ -923,8 +923,8 @@ build_libass() {
 }
 
 build_gmp() {
-  download_and_unpack_file https://gmplib.org/download/gmp/gmp-6.1.0.tar.xz gmp-6.0.0
-  cd gmp-6.0.0
+  download_and_unpack_file https://gmplib.org/download/gmp/gmp-6.1.0.tar.xz gmp-6.1.0
+  cd gmp-6.1.0
     export CC_FOR_BUILD=/usr/bin/gcc
     export CPP_FOR_BUILD=usr/bin/cpp
     generic_configure "ABI=$bits_target"
