@@ -923,8 +923,8 @@ build_libass() {
 }
 
 build_gmp() {
-  download_and_unpack_file https://gmplib.org/download/gmp/gmp-6.1.0.tar.xz gmp-6.0.0
-  cd gmp-6.0.0
+  download_and_unpack_file https://gmplib.org/download/gmp/gmp-6.1.0.tar.xz gmp-6.1.0
+  cd gmp-6.1.0
     export CC_FOR_BUILD=/usr/bin/gcc
     export CPP_FOR_BUILD=usr/bin/cpp
     generic_configure "ABI=$bits_target"
@@ -1400,7 +1400,7 @@ build_libdecklink() {
 build_ffmpeg() {
   local shared_or_static=$1
   local extra_postpend_configure_options=$2
-  local git_url="https://github.com/Saccubus/FFmpeg.git"
+  local git_url="https://github.com/Saccubus/ffmpeg.git"
   local output_dir=$3
   if [[ -z $output_dir ]]; then
     output_dir="ffmpeg_git"
@@ -1423,8 +1423,10 @@ build_ffmpeg() {
     postpend_configure_opts="--enable-static --disable-shared $postpend_configure_opts --prefix=$mingw_w64_x86_64_prefix"
   fi
 
+  rm -rf ${output_dir}
   do_git_checkout $git_url $output_dir $ffmpeg_git_checkout_version 
   cd $output_dir
+  git checkout ${REPO}
   
   if [ "$bits_target" = "32" ]; then
    local arch=x86
@@ -1433,7 +1435,7 @@ build_ffmpeg() {
   fi
 
   init_options="--arch=$arch --target-os=mingw32 --cross-prefix=$cross_prefix --pkg-config=pkg-config --disable-w32threads"
-  config_options="$init_options --enable-gpl --enable-libsoxr --enable-fontconfig --enable-libass --enable-libbluray --enable-iconv --enable-libtwolame --extra-cflags=-DLIBTWOLAME_STATIC --enable-libzvbi --enable-libcaca --enable-libmodplug --extra-libs=-lstdc++ --extra-libs=-lpng --enable-libvidstab --enable-libx265 --enable-decklink --extra-libs=-loleaut32 --enable-libx264 --enable-libxvid --enable-libmp3lame --enable-version3 --enable-zlib --enable-librtmp --enable-libvorbis --enable-libtheora --enable-libspeex --enable-libopenjpeg --enable-gnutls --enable-libgsm --enable-libfreetype --enable-libopus --enable-frei0r --enable-filter=frei0r --enable-bzlib --enable-libxavs --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libvo-amrwbenc --enable-libschroedinger --enable-libvpx --enable-libilbc --enable-libwavpack --enable-libwebp --enable-libgme --enable-dxva2 --enable-avisynth --enable-gray --enable-libopenh264 --enable-nvenc" 
+  config_options="$init_options --enable-gpl --enable-libsoxr --enable-fontconfig --enable-libass --enable-libbluray --enable-iconv --enable-libtwolame --extra-cflags=-DLIBTWOLAME_STATIC --enable-libzvbi --enable-libcaca --enable-libmodplug --extra-libs=-lstdc++ --extra-libs=-lpng --enable-libvidstab --enable-libx265 --extra-libs=-loleaut32 --enable-libx264 --enable-libxvid --enable-libmp3lame --enable-version3 --enable-zlib --enable-librtmp --enable-libvorbis --enable-libtheora --enable-libspeex --enable-libopenjpeg --enable-gnutls --enable-libgsm --enable-libfreetype --enable-libopus --enable-frei0r --enable-filter=frei0r --enable-bzlib --enable-libxavs --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libvo-amrwbenc --enable-libschroedinger --enable-libvpx --enable-libilbc --enable-libwavpack --enable-libwebp --enable-libgme --enable-dxva2 --enable-avisynth --enable-gray --enable-libopenh264 --enable-nvenc" 
   # other possibilities (you'd need to also uncomment the call to their build method): 
   #   --enable-w32threads # [worse UDP than pthreads, so not using that] 
   #   --enable-libflite # [too big so not enabled]
@@ -1659,6 +1661,7 @@ while true; do
       --build-vlc=n [builds a [rather bloated] vlc.exe] 
       -a 'build all' builds mplayer, vlc, etc.
       --build-dvbtee=n [build dvbtee.exe a DVB profiler]
+      --build-libutv=n [builds libutvideo for local modified configure and ffmpeg ] 
       --compiler-flavors=[multi,win32,win64] [default prompt, or skip if you already have one built, multi is both win32 and win64]
       --cflags= [default is empty, compiles for generic cpu, see README]
       --git-get-latest=y [do a git pull for latest code from repositories like FFmpeg--can force a rebuild if changes are detected]
@@ -1686,6 +1689,7 @@ while true; do
        done
        export CFLAGS="${1#*=}"; original_cflags="${1#*=}"; echo "setting cflags as $original_cflags"; shift ;;
     --build-vlc=* ) build_vlc="${1#*=}"; shift ;;
+    --build-libutv=* ) build_libutv="${1#*=}"; shift ;;
     --build-dvbtee=* ) should_build_libdvbtee="${1#*=}"; shift ;;
     --disable-nonfree=* ) disable_nonfree="${1#*=}"; shift ;;
     -a         ) compiler_flavors="multi"; build_mplayer=y; build_libmxf=y; build_mp4box=y; build_vlc=y; build_ffmpeg_shared=y; high_bitdepth=y; build_ffmpeg_static=y; 
